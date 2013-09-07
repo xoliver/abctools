@@ -6,14 +6,9 @@ import sys
 
 # TODO
 #   -Tolerate other headers (no big deal)
-#   -Support accidentals (^,^^,=,_,__)
-#
-#
-#
-#
 #
 
-note_finder = re.compile('[a-g](?:\d+|/\d+|/*)')
+note_finder = re.compile('(=?|\^|\^\^|_|__)([a-g])(\d+|/\d+|/*)')
 
 chords = {
     'C': ('c','e','g'),
@@ -26,36 +21,42 @@ chords = {
 
 scale = ['c','d','e','f','g','a','b']
 
-def get_note_duration(note):
+def calculate_note_duration(duration):
     """
     Return the duration of a note given as a string based on the note_finder
     regular expression: N , N/+ , N\d+ , N/\d+
     """
 
-    if len(note) == 1:
+    if len(duration) == 0:
         return 1.0
     else:
-        duration = note[1:]
         if len( duration.replace('/','') ) == 0:
             return 1.0 / pow(2,len(duration))
         else:
             return float(duration)
 
 def find_chords(bar):
-    # Ignore octave and accidentals
-    # TODO don't ignore accidentals
-    bar = bar.translate(None,",'^=_").lower()
+    """
+    Find potential chords for a given bar and return a dictionary with their
+    scores
+    """
+
+    # Ignore octave
+    bar = bar.translate(None,",'").lower()
     notes = note_finder.findall(bar)
     count = 0.0
     note_count = {}
 
     #Get count of the given bar, just to try things
-    for note in notes:
-        duration = get_note_duration(note)
+    for (accidentals,note,duration) in notes:
+        if accidentals:
+            print 'Oops, found accidental and this is not supported yet!'
+            sys.exit(0)
+        duration = 1 if len(duration)==0 else calculate_note_duration(duration)
         if note[0] in note_count:
-            note_count[note[0]] += duration
+            note_count[note] += duration
         else:
-            note_count[note[0]] = duration
+            note_count[note] = duration
 
     found = {}
     for note in note_count.keys():
@@ -90,7 +91,7 @@ def load_abc_file(fname):
     abc['tune'] = ' '.join( map( lambda x: x.strip(), lines[i:] ) ).strip()
 
     if 'X:' in abc['tune']:
-        print 'Woops, more than one tune found in this file!'
+        print 'Oops, more than one tune found in this file!'
         sys.exit(0)
 
     return abc
@@ -108,6 +109,10 @@ def extract_bars(tune):
     return bars
 
 def get_top_chords( found_chords ):
+    """
+    Find the highest scoring chord(s)
+    """
+
     highest = max( found_chords.values() )
     top = []
     for chord in found_chords:
@@ -119,7 +124,7 @@ def main(argv):
     abc = load_abc_file( argv[1] )
     print '\t', abc['T'], '(%s)' % abc['K']
     if abc['K'] != "C" and abc['K'] != "Cmaj":
-        print 'Woops, key is not C major!'
+        print 'Oops, key is not C major!'
         sys.exit(0)
     i = 1
     for bar in extract_bars( abc['tune'] ):
