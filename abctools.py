@@ -10,16 +10,37 @@ import sys
 
 note_finder = re.compile('(=?|\^|\^\^|_|__)([a-g])(\d+|/\d+|/*)')
 
-chords = {
-    'C': ('c','e','g'),
-    'Dm': ('d','f','a'),
-    'Em': ('e','g','b'),
-    'F': ('f','a','c'),
-    'G': ('g','b','d'),
-    'Am': ('a','c','e')
-}
+scale = ('c','d','e','f','g','a','b')
+major_scale_chord_suffixes = ('','m','m','','','m','dim')
+minor_scale_chord_suffixes = ('m','dim','','m','m','','')
 
-scale = ['c','d','e','f','g','a','b']
+def abort(message):
+    print message
+    sys.exit(0)
+
+def generate_chord_dict( root, major=True, skip_dim=True ):
+    root = root.lower()
+    if root not in scale:
+        abort('Oops, root does not seem to be valid')
+
+    if major:
+        suffixes = major_scale_chord_suffixes
+    else:
+        suffixes = minor_scale_chord_suffixes
+
+    chords = {}
+    current = root
+    total = 6 if skip_dim else 7
+    while len(chords) < total:
+        pos = scale.index(current)
+        name = current.upper() + suffixes[ len(chords) ]
+        current = scale[(pos+1)%7]
+
+        if skip_dim and name[1:] == 'dim':
+            continue
+        chords[name]=(scale[pos], scale[(pos+2)%7],scale[(pos+4)%7])
+
+    return chords
 
 def calculate_note_duration(duration):
     """
@@ -35,7 +56,7 @@ def calculate_note_duration(duration):
         else:
             return float(duration)
 
-def find_chords(bar):
+def find_chords(bar,chords):
     """
     Find potential chords for a given bar and return a dictionary with their
     scores
@@ -50,8 +71,7 @@ def find_chords(bar):
     #Get count of the given bar, just to try things
     for (accidentals,note,duration) in notes:
         if accidentals:
-            print 'Oops, found accidental and this is not supported yet!'
-            sys.exit(0)
+            abort('Oops, found accidental and this is not supported yet!')
         duration = 1 if len(duration)==0 else calculate_note_duration(duration)
         if note[0] in note_count:
             note_count[note] += duration
@@ -71,8 +91,8 @@ def find_chords(bar):
 
 def load_abc_file(fname):
     """
-    Read ABC file and return a dictionary containing the different headers plus
-    the tune in the key 'tune'
+    Read ABC file and return a dictionary containing the different headers
+    plus the tune in the key 'tune'
     """
 
     abc = {}
@@ -91,8 +111,7 @@ def load_abc_file(fname):
     abc['tune'] = ' '.join( map( lambda x: x.strip(), lines[i:] ) ).strip()
 
     if 'X:' in abc['tune']:
-        print 'Oops, more than one tune found in this file!'
-        sys.exit(0)
+        aborT('Oops, more than one tune found in this file!')
 
     return abc
 
@@ -121,20 +140,48 @@ def get_top_chords( found_chords ):
     return top
 
 def main(argv):
+    skip_dim = True
     abc = load_abc_file( argv[1] )
     print '\t', abc['T'], '(%s)' % abc['K']
-    if abc['K'] != "C" and abc['K'] != "Cmaj":
-        print 'Oops, key is not C major!'
-        sys.exit(0)
+
+    key = abc['K']
+
+    if len(key) == 1:
+        is_major_key = True
+    else:
+        if key[1] in '#b':
+            abort('Oops, flat and sharp roots are not supported yet')
+        if key[1:].lower() == 'maj':
+            is_major_key = True
+        else:
+            if key[1:].lower() in ('m','min'):
+                is_major_key = False
+            else:
+                abort('Oops, unsupported key')
+
+    is_major_key = len(key)==1 or key[1:].lower() == 'maj'
+    scale_chords = generate_chord_dict(
+                        key[0],
+                        major=is_major_key,
+                        skip_dim=skip_dim )
+    print 'Using chords in %s %s %s:' % (
+            key[0],
+            'major' if is_major_key else 'minor',
+            '(skipping diminished)' if skip_dim else '' )
+    print scale_chords
+
     i = 1
     for bar in extract_bars( abc['tune'] ):
-        found_chords = find_chords(bar)
-        orderered_chords = sorted(found_chords.items(), key=itemgetter(1), reverse=True)
+        found_chords = find_chords(bar,scale_chords)
+        orderered_chords = sorted( 
+                            found_chords.items(),
+                            key=itemgetter(1),
+                            reverse=True)
+
         print i, bar, get_top_chords( found_chords )
         #print i, bar, orderered_chords
         i += 1
     
-    #import pdb; pdb.set_trace()
     return 0
 
 if __name__ == '__main__':
