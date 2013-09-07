@@ -107,6 +107,14 @@ def extract_bars(tune):
             bars.remove(bar)
     return bars
 
+def get_top_chords( found_chords ):
+    highest = max( found_chords.values() )
+    top = []
+    for chord in found_chords:
+        if found_chords[chord] == highest:
+            top.append( chord )
+    return top
+
 def main(argv):
     abc = load_abc_file( argv[1] )
     print '\t', abc['T'], '(%s)' % abc['K']
@@ -115,8 +123,10 @@ def main(argv):
         sys.exit(0)
     i = 1
     for bar in extract_bars( abc['tune'] ):
-        found_chords = find_chords(bar).items()
-        print i, bar, sorted(found_chords, key=itemgetter(1), reverse=True)
+        found_chords = find_chords(bar)
+        orderered_chords = sorted(found_chords.items(), key=itemgetter(1), reverse=True)
+        print i, bar, get_top_chords( found_chords )
+        #print i, bar, orderered_chords
         i += 1
     
     #import pdb; pdb.set_trace()
