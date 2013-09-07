@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
+import argparse
 from operator import itemgetter
 import re
 import sys
 
 # TODO
-#   -Tolerate other headers (no big deal)
-#
+#   -Tolerate other headers (no big deal, but currently using that to tell
+#       when the ABC tune part starts
 
 note_finder = re.compile('(=?|\^|\^\^|_|__)([a-g])(\d+|/\d+|/*)')
 
@@ -19,6 +20,11 @@ def abort(message):
     sys.exit(0)
 
 def generate_chord_dict( root, major=True, skip_dim=True ):
+    """
+    Create a dictionary containing the chords for a specific natural root note
+    in either major or minor mode, optionally including the diminished one
+    """
+
     root = root.lower()
     if root not in scale:
         abort('Oops, root does not seem to be valid')
@@ -127,7 +133,7 @@ def extract_bars(tune):
             bars.remove(bar)
     return bars
 
-def get_top_chords( found_chords ):
+def get_top_chords( found_chords, mode_bias=None, root_bias=None ):
     """
     Find the highest scoring chord(s)
     """
@@ -136,12 +142,35 @@ def get_top_chords( found_chords ):
     top = []
     for chord in found_chords:
         if found_chords[chord] == highest:
-            top.append( chord )
+            top.append(chord)
+
+    if len(top) > 1:
+        if mode_bias:
+            for chord in top:
+                if chord[1:] not in mode_bias:
+                    top.remove(chord)
+        if root_bias:
+            roots = map( lambda x: x[0], top )
+            if root_bias.upper() in roots:
+                top = [ top[ roots.index(root_bias.upper()) ] ]
+
+    if len(top) == 0:
+        print '*WARNING* Biases removed all the options for this bar, using no biases here'
+        top = original_top
+
     return top
 
-def main(argv):
-    skip_dim = True
-    abc = load_abc_file( argv[1] )
+def main():
+    parser = argparse.ArgumentParser(description='Generate chord list for each bar of an ABC tune file')  
+    parser.add_argument('fname', metavar='FILE.abc', type=str, help='file name')
+    parser.add_argument('-d','--dim', action='store_true', help='incorporate diminished chord')
+    parser.add_argument('-m','--bias_own_mode', action='store_true', help='bias own mode (major or minor) when chords are tied')
+    parser.add_argument('-r','--bias_own_root', action='store_true', help='bias root of the key when chords are tied')
+    parser.add_argument('-v','--verbose', action='store_true', help='print extra information')
+
+    args = parser.parse_args()
+
+    abc = load_abc_file( args.fname )
     print '\t', abc['T'], '(%s)' % abc['K']
 
     key = abc['K']
@@ -163,12 +192,13 @@ def main(argv):
     scale_chords = generate_chord_dict(
                         key[0],
                         major=is_major_key,
-                        skip_dim=skip_dim )
-    print 'Using chords in %s %s %s:' % (
-            key[0],
-            'major' if is_major_key else 'minor',
-            '(skipping diminished)' if skip_dim else '' )
-    print scale_chords
+                        skip_dim=not args.dim )
+    if args.verbose:
+        print 'Using chords in %s %s %s:' % (
+                key[0],
+                'major' if is_major_key else 'minor',
+                '' if args.dim else '(skipping diminished)' )
+        print scale_chords
 
     i = 1
     for bar in extract_bars( abc['tune'] ):
@@ -178,11 +208,23 @@ def main(argv):
                             key=itemgetter(1),
                             reverse=True)
 
-        print i, bar, get_top_chords( found_chords )
+        if args.bias_own_mode:
+            if is_major_key:
+                mbias = ['']
+            else:
+                mbias = ['m']
+        else:
+            mbias = None
+
+        if args.bias_own_root:
+            rbias = key[0]
+        else:
+            rbias = None
+        print i, bar, get_top_chords( found_chords, mode_bias=mbias, root_bias=rbias )
         #print i, bar, orderered_chords
         i += 1
     
     return 0
 
 if __name__ == '__main__':
-    sys.exit( main(sys.argv) )
+    sys.exit( main() )
