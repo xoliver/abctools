@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!env python
 
 import argparse
 from operator import itemgetter
